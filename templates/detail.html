@@ -1,0 +1,214 @@
+{% extends 'layout.html' %}
+
+{% block body %}
+<div class="wrap">
+    <div class="banner" onclick="window.location.href = '/'">
+    </div>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-end">
+            <div>
+                <h1 id="word" style="display: inline">{{ word }}</h1>
+            </div>
+        </div>
+        <hr />
+        <div id="definition">
+            {% for def in definitions %}
+            {% set category = def.fl %}
+            {% set shortdef = def.shortdef[0] %}
+            {% set date = def.date %}
+            <div style="padding: 10px">
+                <i>{{category}}</i>
+                <br />
+                {{shortdef}}
+                <br />
+                <span class="example">{{date}}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <hr />
+        {% if status == 'new' %}
+        <button id="btn-save" class="btn btn-sparta-outline btn-lg" onclick="save_word()">
+            SAVE
+        </button>
+        {% else %}
+        <button id="btn-delete" class="btn btn-sparta btn-lg" onclick="delete_word()">
+            DELETE
+        </button>
+
+        <div id="examples" class="container">
+            <h3 style="text-align: center; margin-bottom: 1rem;">Write your own sentences!</h3>
+            <ol id="example-list">
+                <li id="ex-0">blablabla <a href="javascript:delete_ex(0)">delete</a></li>
+            </ol>
+            <div class="d-flex gap-2" style="margin-left: 20px;">
+                <input type="text" id="new-example" class="form-control form-control-sm">
+                <button class="btn btn-outline-secondary btn-sm" onclick="add_ex()">add</button>
+            </div>
+        </div>
+
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    let word = '{{ word }}';
+    $(document).ready(function () {
+        //get_definitions()
+        get_examples()
+    })
+
+    function get_definitions() {
+        let api_key = '981f0140-2066-49b5-9497-42a1e74f0bb0';
+        let url = `https://www.dictionaryapi.com/api/v3/references/collegiate/json/${word}?key=${api_key}`;
+        $.ajax({
+            type: 'GET',
+            url: url,
+            data: {},
+            success: function (response) {
+                let container = $('#definition');
+                container.empty();
+                console.log(response)
+                for (let i = 0; i < response.length; i++) {
+                    let def = response[i];
+                    let category = def.fl;
+                    let shortdef = def.shortdef[0];
+                    let date = def.date;
+                    let temp_html = `
+                            <div style="padding: 10px">
+                                <i>${category}</i>
+                                <br />
+                                ${shortdef}
+                                <br />
+                                <span class="example">${date}</span>
+                            </div>
+                        `;
+                    container.append(temp_html);
+                }
+            }
+        });
+    }
+
+    function save_word() {
+        let defs = {{ definitions | tojson }};
+
+        defs.forEach((def, index) => {
+            let category = def.fl
+            let shortdef = def.shortdef[0]
+            let date = def.date
+
+            defs[index] = { category, shortdef, date }
+        })
+
+        let data = {
+            word_give: word,
+            definitions_give: defs,
+        }
+
+        $.ajax({
+            type: 'POST',
+            url: '/api/save_word',
+            data: JSON.stringify(data),
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            success: function (response) {
+                if (response.result === 'success') {
+                    alert(response.msg);
+                    window.location.href = `/detail/${word}?status_give=old`;
+                } else {
+                    alert('Something went wrong');
+                }
+            }
+        });
+    }
+
+
+    function delete_word() {
+        $.ajax({
+            type: 'POST',
+            url: '/api/delete_word',
+            data: {
+                word_give: word,
+            },
+            success: function (response) {
+                if (response.result === 'success') {
+                    alert(response.msg);
+                    window.location.href = `/detail/${word}?status_give=new`;
+                } else {
+                    alert('Something went wrong...');
+                }
+            }
+        });
+    }
+
+    function get_examples() {
+        $('#example-list').empty()
+
+        $.ajax({
+            type: 'GET',
+            url: `/api/get_exs?word_give=${word}`,
+            data: {},
+            success: function (response) {
+                if (response.result === 'success') {
+                    let examples = response.examples
+
+                    examples.forEach(ex => {
+                        let temp_html = `
+                            <li id="ex-${ex.id}">
+                                <div class="d-flex justify-content-between">
+                                    ${ex.example}<a href="javascript:delete_ex('${ex.id}')">delete</a>
+                                </div>
+                            </li>
+                            `
+
+                        $('#example-list').append(temp_html)
+                    })
+                }
+            }
+        })
+    }
+
+    function add_ex() {
+        let new_ex = $('#new-example').val()
+
+        if (!new_ex.toLowerCase().includes(word)) {
+            return alert(`Your example must include word, ${word}`)
+        }
+
+        $.ajax({
+            type: 'POST',
+            url: '/api/save_ex',
+            data: {
+                example: new_ex,
+                word: word
+            },
+            success: function (response) {
+                if (response.result == "success") {
+                    alert(response.msg)
+                    $('#new-example').val("")
+                    get_examples()
+                }
+            }
+        })
+    }
+
+    function delete_ex(id) {
+        console.log('deleting', id)
+
+        $.ajax({
+            type: 'POST',
+            url: `/api/delete_ex`,
+            data: {
+                word: word,
+                id: id
+            },
+            success: function (response) {
+                if (response.result == "success") {
+                    alert(response.msg)
+                    get_examples()
+                }
+            }
+        })
+    }
+</script>
+{% endblock %}
